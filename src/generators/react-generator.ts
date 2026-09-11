@@ -1,0 +1,161 @@
+import { ParsedNode } from '../parsers/frame-parser';
+import { logger } from '../utils/logger';
+
+/**
+ * Figma "Variant" values (from the Obra Nova kit) -> shadcn/ui Button's
+ * `variant` prop values. Extend this when wiring up other component sets
+ * or when the kit adds variants.
+ */
+export const BUTTON_VARIANT_MAP: Record<string, string> = {
+  Primary: 'default',
+  Outline: 'outline',
+  Destructive: 'destructive',
+  Ghost: 'ghost',
+  Secondary: 'secondary',
+  Link: 'link',
+};
+
+/**
+ * Figma "Size" values -> shadcn/ui Button's `size` prop values.
+ * `undefined` means "omit the prop" — either because shadcn's default
+ * already matches (Default), or because there's no good equivalent.
+ */
+export const BUTTON_SIZE_MAP: Record<string, string | undefined> = {
+  Default: undefined,
+  Small: 'sm',
+  'Extra small': 'sm',
+};
+
+type UsedImport = 'button' | 'input' | 'label';
+
+function indent(level: number): string {
+  return '  '.repeat(level);
+}
+
+/** Escapes characters that would otherwise break out of JSX text content. */
+function escapeJsxText(text: string): string {
+  return text.replace(/[{}]/g, (ch) => (ch === '{' ? '&#123;' : '&#125;'));
+}
+
+/** Escapes characters that would otherwise break out of a `"..."` JSX attribute value. */
+function escapeJsxAttribute(text: string): string {
+  return text.replace(/"/g, '&quot;');
+}
+
+function mapButtonVariant(rawVariant: string): string {
+  if (rawVariant in BUTTON_VARIANT_MAP) {
+    return BUTTON_VARIANT_MAP[rawVariant];
+  }
+  logger.warn(`Unmapped Button variant "${rawVariant}"; falling back to a lowercased variant prop`);
+  return rawVariant.toLowerCase();
+}
+
+function mapButtonSize(rawSize: string): string | undefined {
+  if (rawSize in BUTTON_SIZE_MAP) {
+    return BUTTON_SIZE_MAP[rawSize];
+  }
+  logger.warn(`Unmapped Button size "${rawSize}"; omitting the size prop`);
+  return undefined;
+}
+
+function buildContainerClassName(node: Extract<ParsedNode, { kind: 'container' }>): string {
+  const directionClass = node.direction === 'row' ? 'flex-row' : 'flex-col';
+  const gapClass = `gap-[${node.gap}px]`;
+
+  // Figma's exact pixel values don't map onto Tailwind's default spacing
+  // scale, so we use arbitrary-value classes throughout rather than
+  // rounding to the nearest scale step.
+  const { top, right, bottom, left } = node.padding;
+  const isUniform = top === right && right === bottom && bottom === left;
+  const paddingClass = isUniform
+    ? `p-[${top}px]`
+    : `p-[${top}px_${right}px_${bottom}px_${left}px]`;
+
+  return ['flex', directionClass, gapClass, paddingClass].join(' ');
+}
+
+/**
+ * Recursively renders a `ParsedNode` tree into a JSX string, indented
+ * `indentLevel` levels deep (2 spaces per level).
+ */
+export function generateJsx(node: ParsedNode, indentLevel = 0): string {
+  const pad = indent(indentLevel);
+
+  switch (node.kind) {
+    case 'button': {
+      const variant = mapButtonVariant(node.variant);
+      const size = mapButtonSize(node.size);
+      const sizeProp = size ? ` size="${size}"` : '';
+      return `${pad}<Button variant="${variant}"${sizeProp}>${escapeJsxText(node.label)}</Button>`;
+    }
+
+    case 'label':
+      return `${pad}<Label>${escapeJsxText(node.text)}</Label>`;
+
+    case 'input':
+      // shadcn's Input has no "controlled example value" prop matching
+      // Figma's "Value" property in this kit — that property represents
+      // placeholder-style example text, so we map it to `placeholder`.
+      return `${pad}<Input placeholder="${escapeJsxAttribute(node.value)}" />`;
+
+    case 'text':
+      return `${pad}<p>${escapeJsxText(node.content)}</p>`;
+
+    case 'container': {
+      const className = buildContainerClassName(node);
+      if (node.children.length === 0) {
+        return `${pad}<div className="${className}" />`;
+      }
+      const childrenJsx = node.children.map((child) => generateJsx(child, indentLevel + 1)).join('\n');
+      return `${pad}<div className="${className}">\n${childrenJsx}\n${pad}</div>`;
+    }
+
+    case 'unknown':
+      logger.warn(`Unhandled node in generateJsx: ${node.nodeType} "${node.name}"`);
+      return `${pad}{/* Unhandled: ${node.nodeType} "${node.name}" */}`;
+  }
+}
+
+/** Walks the tree collecting which shadcn components are actually used, so imports stay minimal. */
+function collectUsedImports(node: ParsedNode, used: Set<UsedImport> = new Set()): Set<UsedImport> {
+  if (node.kind === 'button' || node.kind === 'input' || node.kind === 'label') {
+    used.add(node.kind);
+  }
+  if (node.kind === 'container') {
+    for (const child of node.children) {
+      collectUsedImports(child, used);
+    }
+  }
+  return used;
+}
+
+const SHADCN_IMPORTS: Record<UsedImport, string> = {
+  button: 'import { Button } from "@/components/ui/button";',
+  input: 'import { Input } from "@/components/ui/input";',
+  label: 'import { Label } from "@/components/ui/label";',
+};
+
+/**
+ * Renders a full `.tsx` component file — imports, a `{componentName}`
+ * function component, and its JSX body — from a parsed node tree.
+ */
+export function generateComponentFile(rootNode: ParsedNode, componentName: string): string {
+  const usedImports = collectUsedImports(rootNode);
+  const shadcnImportLines = (['button', 'input', 'label'] as UsedImport[])
+    .filter((kind) => usedImports.has(kind))
+    .map((kind) => SHADCN_IMPORTS[kind]);
+
+  const importLines = ["import React from 'react';", ...shadcnImportLines];
+  const jsx = generateJsx(rootNode, 2);
+
+  return [
+    ...importLines,
+    '',
+    `export function ${componentName}() {`,
+    '  return (',
+    jsx,
+    '  );',
+    '}',
+    '',
+  ].join('\n');
+}
