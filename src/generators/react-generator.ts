@@ -26,7 +26,7 @@ export const BUTTON_SIZE_MAP: Record<string, string | undefined> = {
   'Extra small': 'sm',
 };
 
-type UsedImport = 'button' | 'input' | 'label';
+type UsedImport = 'button' | 'input' | 'label' | 'card' | 'cardHeader' | 'cardContent' | 'cardFooter';
 
 function indent(level: number): string {
   return '  '.repeat(level);
@@ -116,30 +116,95 @@ export function generateJsx(node: ParsedNode, indentLevel = 0): string {
       return `${pad}<div className="${className}">\n${childrenJsx}\n${pad}</div>`;
     }
 
+    case 'card': {
+      const sections = [
+        node.header?.length ? renderCardSection('CardHeader', node.header, indentLevel + 1) : null,
+        node.body?.length ? renderCardSection('CardContent', node.body, indentLevel + 1) : null,
+        node.footer?.length ? renderCardSection('CardFooter', node.footer, indentLevel + 1) : null,
+      ].filter((section): section is string => section !== null);
+
+      if (sections.length === 0) {
+        return `${pad}<Card />`;
+      }
+      return `${pad}<Card>\n${sections.join('\n')}\n${pad}</Card>`;
+    }
+
     case 'unknown':
       logger.warn(`Unhandled node in generateJsx: ${node.nodeType} "${node.name}"`);
       return `${pad}{/* Unhandled: ${node.nodeType} "${node.name}" */}`;
   }
 }
 
-/** Walks the tree collecting which shadcn components are actually used, so imports stay minimal. */
+function renderCardSection(tag: string, children: ParsedNode[], indentLevel: number): string {
+  const pad = indent(indentLevel);
+  const childrenJsx = children.map((child) => generateJsx(child, indentLevel + 1)).join('\n');
+  return `${pad}<${tag}>\n${childrenJsx}\n${pad}</${tag}>`;
+}
+
+/**
+ * Walks the tree collecting which shadcn components are actually used, so
+ * imports stay minimal — including only the Card/CardHeader/CardContent/
+ * CardFooter sub-imports a given card instance actually renders (see
+ * `generateJsx`'s 'card' case, which the checks below mirror).
+ */
 function collectUsedImports(node: ParsedNode, used: Set<UsedImport> = new Set()): Set<UsedImport> {
-  if (node.kind === 'button' || node.kind === 'input' || node.kind === 'label') {
-    used.add(node.kind);
-  }
-  if (node.kind === 'container') {
-    for (const child of node.children) {
-      collectUsedImports(child, used);
-    }
+  switch (node.kind) {
+    case 'button':
+    case 'input':
+    case 'label':
+      used.add(node.kind);
+      break;
+
+    case 'card':
+      used.add('card');
+      if (node.header?.length) {
+        used.add('cardHeader');
+        node.header.forEach((child) => collectUsedImports(child, used));
+      }
+      if (node.body?.length) {
+        used.add('cardContent');
+        node.body.forEach((child) => collectUsedImports(child, used));
+      }
+      if (node.footer?.length) {
+        used.add('cardFooter');
+        node.footer.forEach((child) => collectUsedImports(child, used));
+      }
+      break;
+
+    case 'container':
+      node.children.forEach((child) => collectUsedImports(child, used));
+      break;
   }
   return used;
 }
 
-const SHADCN_IMPORTS: Record<UsedImport, string> = {
-  button: 'import { Button } from "@/components/ui/button";',
-  input: 'import { Input } from "@/components/ui/input";',
-  label: 'import { Label } from "@/components/ui/label";',
-};
+/** Which module each shadcn import comes from, and its exported name there — several Card imports share one module. */
+const IMPORT_SPECS: { key: UsedImport; name: string; module: string }[] = [
+  { key: 'button', name: 'Button', module: '@/components/ui/button' },
+  { key: 'input', name: 'Input', module: '@/components/ui/input' },
+  { key: 'label', name: 'Label', module: '@/components/ui/label' },
+  { key: 'card', name: 'Card', module: '@/components/ui/card' },
+  { key: 'cardHeader', name: 'CardHeader', module: '@/components/ui/card' },
+  { key: 'cardContent', name: 'CardContent', module: '@/components/ui/card' },
+  { key: 'cardFooter', name: 'CardFooter', module: '@/components/ui/card' },
+];
+
+function buildShadcnImportLines(used: Set<UsedImport>): string[] {
+  const namesByModule = new Map<string, string[]>();
+
+  for (const spec of IMPORT_SPECS) {
+    if (!used.has(spec.key)) {
+      continue;
+    }
+    const names = namesByModule.get(spec.module) ?? [];
+    names.push(spec.name);
+    namesByModule.set(spec.module, names);
+  }
+
+  return Array.from(namesByModule.entries()).map(
+    ([module, names]) => `import { ${names.join(', ')} } from "${module}";`
+  );
+}
 
 export interface GenerateComponentFileOptions {
   /**
@@ -161,9 +226,7 @@ export function generateComponentFile(
 ): string {
   const { includeReactImport = false } = options;
   const usedImports = collectUsedImports(rootNode);
-  const shadcnImportLines = (['button', 'input', 'label'] as UsedImport[])
-    .filter((kind) => usedImports.has(kind))
-    .map((kind) => SHADCN_IMPORTS[kind]);
+  const shadcnImportLines = buildShadcnImportLines(usedImports);
 
   const importLines = [
     ...(includeReactImport ? ["import React from 'react';"] : []),

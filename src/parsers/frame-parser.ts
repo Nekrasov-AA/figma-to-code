@@ -1,9 +1,11 @@
 import { FigmaComponentsMap, FigmaComponentSetsMap, FigmaNode } from '../types/figma';
 import {
   ParsedButton,
+  ParsedCard,
   ParsedInput,
   ParsedLabel,
   parseButtonComponent,
+  parseCardComponent,
   parseInputComponent,
   parseLabelComponent,
 } from './shadcn-parser';
@@ -18,14 +20,15 @@ export interface ParsedPadding {
 /**
  * A generic intermediate representation of a Figma node, ready to hand to
  * a code generator. Recognized components (Button - Nova, Label, Input -
- * Nova) get their own `kind`; auto-layout frames/groups/slots become
- * `container`; plain text becomes `text`; anything else is `unknown` and
- * left unexpanded.
+ * Nova, Card - Nova) get their own `kind`; auto-layout frames/groups/slots
+ * become `container`; plain text becomes `text`; anything else is
+ * `unknown` and left unexpanded.
  */
 export type ParsedNode =
   | ({ kind: 'button' } & ParsedButton)
   | ({ kind: 'label' } & ParsedLabel)
   | ({ kind: 'input' } & ParsedInput)
+  | ({ kind: 'card' } & ParsedCard<ParsedNode>)
   | { kind: 'text'; content: string }
   | {
       kind: 'container';
@@ -50,6 +53,13 @@ export function parseFrameNode(
   componentSets: FigmaComponentSetsMap
 ): ParsedNode {
   if (node.type === 'INSTANCE') {
+    const card = parseCardComponent(node, components, componentSets, (child) =>
+      parseFrameNode(child, components, componentSets)
+    );
+    if (card) {
+      return { kind: 'card', ...card };
+    }
+
     const button = parseButtonComponent(node, components, componentSets);
     if (button) {
       return { kind: 'button', ...button };

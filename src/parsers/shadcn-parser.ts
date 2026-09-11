@@ -9,6 +9,8 @@ import { logger } from '../utils/logger';
 const BUTTON_COMPONENT_SET_NAME = 'Button - Nova';
 const LABEL_COMPONENT_SET_NAME = 'Label';
 const INPUT_COMPONENT_SET_NAME = 'Input - Nova';
+const CARD_COMPONENT_SET_NAME = 'Card - Nova';
+const CARD_SECTION_COMPONENT_SET_NAME = '.Card Section - Nova';
 
 /**
  * Extracted data for a "Button - Nova" instance from the Obra shadcn/ui
@@ -46,6 +48,19 @@ export interface ParsedInput {
   showDecorationRight: boolean;
   showPrependText: boolean;
   showAppendText: boolean;
+}
+
+/**
+ * Extracted data for a "Card - Nova" instance: the parsed content found
+ * inside each of its Header/Body/Footer sections, or `null` if that
+ * section wasn't present. `TNode` is generic (rather than importing
+ * frame-parser's `ParsedNode`) to avoid a circular import — see
+ * `parseCardComponent`.
+ */
+export interface ParsedCard<TNode = unknown> {
+  header: TNode[] | null;
+  body: TNode[] | null;
+  footer: TNode[] | null;
 }
 
 /**
@@ -242,4 +257,79 @@ export function parseInputComponent(
     showPrependText: findProperty(properties, 'Show prepend text')?.value === true,
     showAppendText: findProperty(properties, 'Show append text')?.value === true,
   };
+}
+
+/** Direct children of a section instance that are themselves SLOT nodes, flattened into their content. */
+function extractSlotContent(sectionNode: FigmaNode): FigmaNode[] {
+  return (sectionNode.children ?? [])
+    .filter((child) => child.type === 'SLOT')
+    .flatMap((slot) => (slot.children ?? []).filter((grandchild) => grandchild.visible !== false));
+}
+
+/**
+ * Extract Header/Body/Footer content from a "Card - Nova" instance.
+ *
+ * Card - Nova's three sections are all instances of the SAME component set
+ * (".Card Section - Nova") with identical componentProperties
+ * (Spacing/Background/Show border) — there's no property that says
+ * "I'm the header". The only signal Figma gives us for *which* section a
+ * given child is is that child's own `node.name` ("Header"/"Body"/
+ * "Footer").
+ *
+ * This deliberately breaks our usual "never trust node.name" rule (see
+ * `resolveComponentSetName`) — but note it's a narrower claim than the one
+ * we normally distrust. We're not using node.name to identify WHAT
+ * component something is (componentId + `isInstanceOf` still does that,
+ * confirming this really is a ".Card Section - Nova" instance first); we
+ * only use it to read a section's ROLE within a card whose identity is
+ * already confirmed. A designer renaming "Header" to something else would
+ * break this (logged as a warning below), but they'd have no reason to —
+ * unlike an arbitrary button instance, which routinely gets renamed to
+ * whatever it's used for ("Login", "Submit", ...).
+ *
+ * `parseChildFn` lets the caller (frame-parser.ts) supply its own
+ * recursive node parser for each section's content, avoiding a circular
+ * import between this file and frame-parser.ts.
+ */
+export function parseCardComponent<TNode>(
+  node: FigmaNode,
+  components: FigmaComponentsMap,
+  componentSets: FigmaComponentSetsMap,
+  parseChildFn: (node: FigmaNode) => TNode
+): ParsedCard<TNode> | null {
+  if (!isInstanceOf(node, CARD_COMPONENT_SET_NAME, components, componentSets)) {
+    return null;
+  }
+
+  const card: ParsedCard<TNode> = { header: null, body: null, footer: null };
+
+  for (const child of node.children ?? []) {
+    if (child.type !== 'INSTANCE' || !child.componentId) {
+      continue;
+    }
+    const sectionSetName = resolveComponentSetName(child.componentId, components, componentSets);
+    if (sectionSetName !== CARD_SECTION_COMPONENT_SET_NAME) {
+      continue;
+    }
+
+    const content = extractSlotContent(child).map(parseChildFn);
+    switch (child.name.trim().toLowerCase()) {
+      case 'header':
+        card.header = content;
+        break;
+      case 'body':
+        card.body = content;
+        break;
+      case 'footer':
+        card.footer = content;
+        break;
+      default:
+        logger.warn(
+          `Skipping Card section "${child.name}" (${child.id}): expected its name to be ` +
+            `"Header", "Body", or "Footer" to identify its role, got "${child.name}"`
+        );
+    }
+  }
+
+  return card;
 }
