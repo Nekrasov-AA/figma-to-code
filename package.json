@@ -1,0 +1,36 @@
+{
+  "name": "figma-to-code",
+  "version": "0.1.0",
+  "description": "Convert Figma designs to React/Vue components",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "figma-to-code": "./bin/figma-to-code.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "figma",
+    "code-generation",
+    "react",
+    "vue",
+    "ui-components"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0",
+    "dotenv": "^16.3.1",
+    "figma-api": "^1.13.0",
+    "handlebars": "^4.7.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.0"
+  }
+}
