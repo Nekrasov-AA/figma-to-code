@@ -112,6 +112,29 @@ export class FigmaClient {
     };
   }
 
+  /**
+   * Fetch a file and recursively collect every node matching `predicate`,
+   * searching the *entire* document tree rather than just top-level
+   * COMPONENT / COMPONENT_SET nodes. Use this to find component INSTANCEs
+   * (e.g. a specific button placed somewhere in a page), which
+   * `getFileComponents` does not return.
+   */
+  async findNodes(fileId: string, predicate: (node: FigmaNode) => boolean): Promise<FigmaNode[]> {
+    const file = await this.getFile(fileId);
+    const results: FigmaNode[] = [];
+
+    for (const page of file.document.children) {
+      this.walkTree(page.children ?? [], (node) => {
+        if (predicate(node)) {
+          results.push(node);
+        }
+      });
+    }
+
+    logger.debug(`findNodes matched ${results.length} node(s) in "${file.name}"`);
+    return results;
+  }
+
   /** Recursively finds COMPONENT / COMPONENT_SET nodes within a page's children. */
   private collectComponents(
     nodes: FigmaNode[],
@@ -119,7 +142,7 @@ export class FigmaClient {
     metadata: FigmaFile['components'],
     results: FigmaComponent[]
   ): void {
-    for (const node of nodes) {
+    this.walkTree(nodes, (node) => {
       if (COMPONENT_NODE_TYPES.has(node.type)) {
         const meta = metadata[node.id];
         results.push({
@@ -130,8 +153,15 @@ export class FigmaClient {
           node,
         });
       }
+    });
+  }
+
+  /** Depth-first walk over a node list, calling `visitor` for every node encountered. */
+  private walkTree(nodes: FigmaNode[], visitor: (node: FigmaNode) => void): void {
+    for (const node of nodes) {
+      visitor(node);
       if (node.children?.length) {
-        this.collectComponents(node.children, pageName, metadata, results);
+        this.walkTree(node.children, visitor);
       }
     }
   }

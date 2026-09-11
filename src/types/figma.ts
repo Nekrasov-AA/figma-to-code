@@ -58,6 +58,18 @@ export interface FigmaTypeStyle {
   textAlignVertical?: string;
 }
 
+export type FigmaComponentPropertyType = 'VARIANT' | 'BOOLEAN' | 'TEXT' | 'INSTANCE_SWAP';
+
+/**
+ * One entry of an INSTANCE (or COMPONENT) node's `componentProperties`.
+ * Figma keys these by property name, sometimes suffixed with an internal
+ * id (e.g. `"Show spinner#6046:3"`) — see `FigmaNode.componentProperties`.
+ */
+export interface FigmaComponentPropertyValue {
+  type: FigmaComponentPropertyType;
+  value: string | boolean;
+}
+
 /**
  * A single node in a Figma document tree. Every field beyond `id`, `name`
  * and `type` is optional because Figma only includes it when relevant to
@@ -76,6 +88,14 @@ export interface FigmaNode {
   style?: FigmaTypeStyle;
   componentId?: string;
   componentPropertyDefinitions?: Record<string, unknown>;
+  /**
+   * Present on INSTANCE nodes (and variant COMPONENT nodes): the values of
+   * that instance's component properties, e.g. `{ Size: { value: "Extra
+   * small", type: "VARIANT" }, "Show spinner#6046:3": { value: false, type:
+   * "BOOLEAN" } }`. Keys may carry a `#<id>` suffix that varies per
+   * component — match by prefix, not exact key, when reading these.
+   */
+  componentProperties?: Record<string, FigmaComponentPropertyValue>;
   layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL';
   itemSpacing?: number;
   paddingLeft?: number;
