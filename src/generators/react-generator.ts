@@ -206,6 +206,24 @@ function buildShadcnImportLines(used: Set<UsedImport>): string[] {
   );
 }
 
+const DISPLAY_NAMES: Record<UsedImport, string> = {
+  button: 'Button',
+  input: 'Input',
+  label: 'Label',
+  card: 'Card',
+  cardHeader: 'Card',
+  cardContent: 'Card',
+  cardFooter: 'Card',
+};
+
+/** Human-readable, deduped list of shadcn components used in a parsed tree (e.g. for a CLI summary). */
+export function getUsedComponentNames(node: ParsedNode): string[] {
+  const used = collectUsedImports(node);
+  const names = new Set<string>();
+  used.forEach((key) => names.add(DISPLAY_NAMES[key]));
+  return Array.from(names);
+}
+
 export interface GenerateComponentFileOptions {
   /**
    * Emit `import React from 'react';`. Default `false` — modern React and

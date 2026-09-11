@@ -148,6 +148,7 @@ vite.config.ts.timestamp-*
 # Generated components (не коммитим генерируемый код)
 src/components/generated/
 src/fixtures/output/
+output/
 dist/
 
 # Local dev cache of Figma API responses

@@ -114,3 +114,26 @@ export function parseFrameNode(
   // needing to know about them.
   return { kind: 'unknown', nodeType: node.type, name: node.name };
 }
+
+/**
+ * Counts `unknown` nodes anywhere in a parsed tree — each one is also
+ * logged as a warning during `generateJsx`, but a caller (e.g. the CLI)
+ * that wants a single "N nodes weren't handled" summary shouldn't have to
+ * scrape that from scrolled-by console output.
+ */
+export function countUnhandledNodes(node: ParsedNode): number {
+  switch (node.kind) {
+    case 'unknown':
+      return 1;
+    case 'container':
+      return node.children.reduce((sum, child) => sum + countUnhandledNodes(child), 0);
+    case 'card':
+      return (
+        (node.header ?? []).reduce((sum, child) => sum + countUnhandledNodes(child), 0) +
+        (node.body ?? []).reduce((sum, child) => sum + countUnhandledNodes(child), 0) +
+        (node.footer ?? []).reduce((sum, child) => sum + countUnhandledNodes(child), 0)
+      );
+    default:
+      return 0;
+  }
+}

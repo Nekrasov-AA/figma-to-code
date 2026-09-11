@@ -19,12 +19,18 @@ npm install -g figma-to-code
 ## Quick Start
 
 ```bash
-# Generate components from Figma
+# Generate a component from a single Figma node
 figma-to-code generate \
-  --file-id "YOUR_FIGMA_FILE_ID" \
-  --ui-kit shadcn \
-  --framework react
+  --file-id X0fg87ZELrJBM3zsCEFglG \
+  --node-id 1953-27194 \
+  --name LoginCard
 ```
+
+`--node-id` accepts either the dash-separated id from a Figma URL
+(`1953-27194`) or the API's colon format (`1953:27194`). `--name` is
+optional — it defaults to a PascalCase version of the node's own name in
+Figma. See `figma-to-code generate --help` for all options (`--output`,
+`--no-cache`).
 
 ## Configuration
 
