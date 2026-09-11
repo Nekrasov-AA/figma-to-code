@@ -12,6 +12,9 @@
     "start": "node dist/cli/index.js",
     "test-fetch": "ts-node src/scripts/test-fetch.ts",
     "test-parse-button": "ts-node src/scripts/test-parse-button.ts",
+    "find-frames": "ts-node src/scripts/find-composite-frames.ts",
+    "inspect-node": "ts-node src/scripts/inspect-node.ts",
+    "test-parse-frame": "ts-node src/scripts/test-parse-frame.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "prepublishOnly": "npm run build"
   },

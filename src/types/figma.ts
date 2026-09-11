@@ -118,7 +118,12 @@ export interface FigmaDocument extends FigmaNode {
   children: FigmaCanvas[];
 }
 
-/** Metadata Figma stores per-component, keyed by node id in `file.components`. */
+/**
+ * Metadata for one specific variant, keyed by its node id (== INSTANCE
+ * nodes' `componentId`) in `file.components`. `componentSetId` points into
+ * `file.componentSets` for the stable, designer-proof name of the set this
+ * variant belongs to — see `resolveComponentSetName` in shadcn-parser.ts.
+ */
 export interface FigmaComponentMetadata {
   key: string;
   name: string;
@@ -127,14 +132,24 @@ export interface FigmaComponentMetadata {
   documentationLinks?: { uri: string }[];
 }
 
+/** Metadata for a component SET, keyed by node id in `file.componentSets`. */
+export interface FigmaComponentSetMetadata {
+  key: string;
+  name: string;
+  description: string;
+}
+
+export type FigmaComponentsMap = Record<string, FigmaComponentMetadata>;
+export type FigmaComponentSetsMap = Record<string, FigmaComponentSetMetadata>;
+
 /** Response shape for `GET /v1/files/:file_key`. */
 export interface FigmaFile {
   name: string;
   lastModified: string;
   version: string;
   document: FigmaDocument;
-  components: Record<string, FigmaComponentMetadata>;
-  componentSets?: Record<string, FigmaComponentMetadata>;
+  components: FigmaComponentsMap;
+  componentSets?: FigmaComponentSetsMap;
   schemaVersion: number;
 }
 
@@ -143,7 +158,10 @@ export interface FigmaNodesResponse {
   name: string;
   lastModified: string;
   version: string;
-  nodes: Record<string, { document: FigmaNode; components?: Record<string, FigmaComponentMetadata> }>;
+  nodes: Record<
+    string,
+    { document: FigmaNode; components?: FigmaComponentsMap; componentSets?: FigmaComponentSetsMap }
+  >;
 }
 
 /**
@@ -157,6 +175,12 @@ export interface FigmaComponent {
   description: string;
   pageName: string;
   node: FigmaNode;
+}
+
+/** A node found via `FigmaClient.findNodes`, paired with the page it was found on. */
+export interface FigmaNodeMatch {
+  node: FigmaNode;
+  pageName: string;
 }
 
 /**

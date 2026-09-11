@@ -149,6 +149,9 @@ vite.config.ts.timestamp-*
 src/components/generated/
 dist/
 
+# Local dev cache of Figma API responses
+.figma-cache/
+
 # Dependencies
 node_modules/
 package-lock.json

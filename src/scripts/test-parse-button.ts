@@ -10,8 +10,6 @@ import { parseButtonComponent } from '../parsers/shadcn-parser';
 
 dotenv.config();
 
-const TARGET_NAME = 'Button - Nova';
-
 async function main(): Promise<void> {
   const token = process.env.FIGMA_API_TOKEN;
   if (!token) {
@@ -28,20 +26,27 @@ async function main(): Promise<void> {
 
   const client = new FigmaClient(token);
 
+  // The components/componentSets lookup tables (needed to reliably identify
+  // which instances are Button - Nova, rather than trusting node.name —
+  // see resolveComponentSetName in shadcn-parser.ts) live on the file
+  // response. getFile() is cached, so this doesn't cost an extra API call
+  // beyond what findNodes() below already makes internally.
+  const file = await client.getFile(fileId);
+  const componentSets = file.componentSets ?? {};
+
   // getFileComponents only returns top-level COMPONENT/COMPONENT_SET nodes;
   // actual buttons placed on a page are INSTANCE nodes, so we need to
-  // search the whole document tree instead.
-  const buttonInstances = await client.findNodes(
-    fileId,
-    (node) => node.type === 'INSTANCE' && node.name === TARGET_NAME
-  );
-  console.log(`\nFound ${buttonInstances.length} "${TARGET_NAME}" instance(s)`);
+  // search the whole document tree instead. We can't filter by name here
+  // (designers rename instances) — parseButtonComponent does the real
+  // identity check via componentId.
+  const instances = await client.findNodes(fileId, (node) => node.type === 'INSTANCE');
+  console.log(`\nFound ${instances.length} INSTANCE node(s), checking which are Button - Nova...`);
 
-  const parsed = buttonInstances
-    .map((node) => parseButtonComponent(node))
+  const parsed = instances
+    .map(({ node }) => parseButtonComponent(node, file.components, componentSets))
     .filter((button): button is NonNullable<typeof button> => button !== null);
 
-  console.log(`Parsed ${parsed.length} of them successfully:\n`);
+  console.log(`Parsed ${parsed.length} Button - Nova instance(s):\n`);
   console.table(
     parsed.map((button) => ({
       size: button.size,
